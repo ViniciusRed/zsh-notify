@@ -1,0 +1,67 @@
+# vim: set nowrap filetype=zsh:
+
+function is-terminal-active() {
+    local always_check_active_window
+    zstyle -b ':notify:*' always-check-active-window always_check_active_window
+
+    if [[ $always_check_active_window == "yes" ]]; then
+        # Use qdbus to check if current window is active
+        local active_window
+        active_window=$(qdbus org.kde.KWin /KWin activeWindow)
+        local current_window
+        current_window=$(xdotool getwindowfocus)
+
+        [[ "$active_window" == "$current_window" ]]
+        return $?
+    fi
+
+    # If we're not always checking, assume we're not active
+    return 1
+}
+
+function notify-terminal() {
+    local terminal_window
+    terminal_window=$(xdotool getwindowfocus)
+
+    local activate_terminal
+    zstyle -b ':notify:*' activate-terminal activate_terminal
+    if [[ $activate_terminal == "yes" ]]; then
+        xdotool windowactivate "$terminal_window"
+    fi
+
+    local disable_urgent
+    zstyle -b ':notify:*' disable-urgent disable_urgent
+    if [[ $disable_urgent == "no" ]]; then
+        xdotool windowactivate "$terminal_window"
+    fi
+}
+
+function zsh-notify() {
+    local result=$1
+    local elapsed=$2
+    local command
+    read -r command
+
+    local title body app_name expire_time sound_file icon
+    zstyle -s ':notify:*' "${result}-title" title
+    zstyle -s ':notify:*' app-name app_name
+    zstyle -s ':notify:*' expire-time expire_time
+    zstyle -s ':notify:*' "${result}-sound" sound_file
+    zstyle -s ':notify:*' "${result}-icon" icon
+
+    title=${title//\#\{time_elapsed\}/$elapsed}
+
+    # Use notify-send for KDE notification
+    if [[ -n $icon ]]; then
+        notify-send -a "${app_name:-terminal}" -i "$icon" -t "${expire_time:-5000}" "$title" "$command"
+    else
+        notify-send -a "${app_name:-terminal}" -t "${expire_time:-5000}" "$title" "$command"
+    fi
+
+    # Play sound if configured
+    if [[ -n $sound_file ]]; then
+        paplay "$sound_file" &>/dev/null &
+    fi
+
+    notify-terminal
+}
